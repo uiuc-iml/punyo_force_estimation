@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling", "numpy", "open3d", "cvxpy", "torch", "meshio", "scipy", "opencv-python", "pygmsh"]
+build-backend = "hatchling.build"
+
+[project]
+name = "punyo_force_estimation"
+version = "0.0.1"
+authors = [
+  { name="mass2010chromium", email="mass2010chromium@github.com" },
+]
+description = "A small example package"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/pypa/sampleproject"
+Issues = "https://github.com/pypa/sampleproject/issues"
