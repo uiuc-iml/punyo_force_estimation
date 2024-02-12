@@ -1,0 +1,8 @@
+numpy
+open3d
+cvxpy
+torch
+meshio
+scipy
+opencv-python
+pygmsh
