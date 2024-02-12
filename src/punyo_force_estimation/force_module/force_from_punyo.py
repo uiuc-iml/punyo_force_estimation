@@ -3,11 +3,11 @@ import time
 import numpy as np
 import torch
 
-from .force_module.deformation_estimator import DeformationEstimation
-from .force_module.force_predictor import CoupledForcePrediction
+from .deformation_estimator import DeformationEstimation
+from .force_predictor import CoupledForcePrediction
 #from force_module.force_predictor_custom import CoupledForcePrediction
-from .force_module.material_model import CorotatedPlaneStressModel, triangle_optimal_rotation
-from .utils import *
+from .material_model import CorotatedPlaneStressModel, triangle_optimal_rotation
+from ..utils import *
 
 # TODO: come up with a better way to (dynamically?) determine the uncertainty
 #k_force = 0.0003

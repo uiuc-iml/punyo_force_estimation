@@ -8,10 +8,7 @@ np.set_printoptions(linewidth=260)
 
 import socplib.socp
 
-try:
-    from force_module.material_model import BaseMaterialModel
-except:
-    from material_model import BaseMaterialModel
+from .material_model import BaseMaterialModel
 
 def idx_pts2mat(pts_idx):
     mat_idx = torch.tensor([[3*i, 3*i+1, 3*i+2] for i in pts_idx]).reshape(-1)

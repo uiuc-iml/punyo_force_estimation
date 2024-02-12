@@ -7,7 +7,7 @@ import numpy as np
 np.set_printoptions(linewidth=260)
 
 try:
-    from .force_module.material_model import BaseMaterialModel
+    from .material_model import BaseMaterialModel
 except:
     from material_model import BaseMaterialModel
 

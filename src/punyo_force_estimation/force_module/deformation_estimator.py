@@ -7,12 +7,8 @@ import matplotlib.pyplot as plt
 import meshio
 import open3d as o3d
 
-if __name__ == "__main__":
-    from ..pipeline import *
-    from ..ellipse_mesh import outer_ellipse
-else:
-    from .pipeline import *
-    from .ellipse_mesh import outer_ellipse
+from ..pipeline import *
+from ..ellipse_mesh import outer_ellipse
 
 pc_rotation = 25*(np.pi/180)
 CAMERA_R = np.array([

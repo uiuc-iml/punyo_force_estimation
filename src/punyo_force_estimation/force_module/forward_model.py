@@ -6,11 +6,8 @@ import cvxpy as cp
 import numpy as np
 np.set_printoptions(linewidth=260)
 
-try:
-    from .force_module.material_model import BaseMaterialModel, CorotatedPlaneStressModel
-except:
-    from material_model import BaseMaterialModel, CorotatedPlaneStressModel
-from .utils import estimate_tri_normals
+from .material_model import BaseMaterialModel, CorotatedPlaneStressModel
+from ..utils import estimate_tri_normals
 
 class PVConstantModel(BaseMaterialModel):
     def __init__(self, base_model):
