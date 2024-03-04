@@ -1,5 +1,8 @@
 import torch
-from torch.func import jacrev
+try:
+    from torch.func import jacrev
+except:
+    from functorch import jacrev
 
 class BaseMaterialModel:
     def __init__(self):

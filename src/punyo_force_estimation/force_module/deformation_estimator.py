@@ -10,14 +10,6 @@ import open3d as o3d
 from ..pipeline import *
 from ..ellipse_mesh import outer_ellipse
 
-pc_rotation = 25*(np.pi/180)
-CAMERA_R = np.array([
-    [np.cos(pc_rotation), 0, -np.sin(pc_rotation)],
-    [0, 1, 0],
-    [np.sin(pc_rotation), 0, np.cos(pc_rotation)],
-])
-mesh_plane_z = 0.054
-
 z_tol = 0.000
 max_bubble_height = 0.045
 downsample_skip = 1
