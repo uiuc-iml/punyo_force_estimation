@@ -1,12 +1,17 @@
+""" Generate a mesh corresponding to the bubble without any forces applied to it.
+
+Start from a flat mesh, and project it up along the camera direction to the bubble.
+Then "fix" the XY coordinates by
+"""
 import numpy as np
 import scipy.interpolate
 import pygmsh
 import meshio
 
-from .utils import *
-from .ellipse_mesh import x_bounds, y_bounds, axis_aligned_ellipse
-from .guess_force import predict_internal_force
-from .extract_bad_points import get_point_errors
+from punyo_force_estimation.utils import *
+from punyo_force_estimation.ellipse_mesh import x_bounds, y_bounds, axis_aligned_ellipse
+from punyo_force_estimation.guess_force import predict_internal_force
+from punyo_force_estimation.extract_bad_points import get_point_errors
 
 def spread_points(points, ideal_xy):
     return scipy.interpolate.griddata(
@@ -28,26 +33,11 @@ ATMOSPHERIC_PRESSURE = 101325   # Pascals
 # dat = np.load("inflating_sequence/pressure.0.npy")
 # ATMOSPHERIC_PRESSURE = dat[1] * 100
 
-
-if __name__ == "__main__":
-    import os
-    import argparse
-    import pathlib
-
-    parser = argparse.ArgumentParser(description="generate initial mesh for no force config")
-    parser.add_argument('-n', '--num_points', type=int, default=64)
-    parser.add_argument('-p', '--working_dir', type=pathlib.Path, default="~/Documents/punyo_unit_test/data_0/expand")
-    args = parser.parse_args()
-    n_points = args.num_points
-    working_dir = os.path.expanduser(args.working_dir)
-
-    reference_frames = [0, 1, 2, 3, 4]
-    still_frames = list(range(0, 80, 1))
-
+def gen_ref_data(n_points, working_dir, out_dir, reference_frames=[0,1,2,3,4], still_frames=list(range(0, 30, 1))):
     mesh = gen_flat_mesh(n_points)
-    os.makedirs("ref_data", exist_ok=True)
-    mesh.write("ref_data/flat.vtk")
-    points, triangles, boundary, boundary_mask = unpack_mesh("ref_data/flat.vtk")
+    os.makedirs(out_dir, exist_ok=True)
+    mesh.write(f"{out_dir}/flat.vtk")
+    points, triangles, boundary, boundary_mask = unpack_mesh(f"{out_dir}/flat.vtk")
 
     print("Mesh stats:", len(points), "points,", len(triangles), "triangles,", len(boundary), "boundary nodes")
 
@@ -58,13 +48,13 @@ if __name__ == "__main__":
             )
 
     mesh.points = undeformed_mesh_points
-    mesh.write("ref_data/domed_unequal.vtk")
+    mesh.write(f"{out_dir}/domed_unequal.vtk")
 
     undeformed_mesh_points = spread_points(undeformed_mesh_points, points[:, :2])
     for n in boundary:
         undeformed_mesh_points[n] = points[n]
     mesh.points = undeformed_mesh_points
-    mesh.write("ref_data/equalized.vtk")
+    mesh.write(f"{out_dir}/equalized.vtk")
 
     total_pressure_delta = reference_pressure - ATMOSPHERIC_PRESSURE
     print("Pressure delta: ", total_pressure_delta)
@@ -72,7 +62,7 @@ if __name__ == "__main__":
     forces, internal_forces, all_tri_forces = predict_internal_force(undeformed_mesh_points, triangles, boundary, total_pressure_delta)
 
     print("saving forces...")
-    np.save("ref_data/triangle_force.npy", all_tri_forces)
+    np.save(f"{out_dir}/triangle_force.npy", all_tri_forces)
 
 
     deformation_estimator, undeformed_mesh_points, reference_pressure = get_reference_mesh(
@@ -85,9 +75,21 @@ if __name__ == "__main__":
     point_zs_1 = np.std(all_deviations, axis=0)
 
     print("saving error data")
-    point_zs_0.dump("ref_data/point_err_mean.npy")
-    point_zs_1.dump("ref_data/point_stdevs.npy")
-    deformation_estimator, undeformed_mesh_points, reference_pressure = get_reference_mesh(
-                reference_rgbs, reference_pcds, reference_pressures,
-                undeformed_mesh_points, triangles, boundary, smooth_iters=0
-            )
+    point_zs_0.dump(f"{out_dir}/point_err_mean.npy")
+    point_zs_1.dump(f"{out_dir}/point_stdevs.npy")
+
+if __name__ == "__main__":
+    import os
+    import argparse
+    import pathlib
+
+    parser = argparse.ArgumentParser(description="generate initial mesh for no force config")
+    parser.add_argument('working_dir', type=pathlib.Path, help="Folder containing data (bunch of numpy arrays of rgb, pcd, pressure data of the bubble not in contact with anything)")
+    parser.add_argument('-n', '--num_points', type=int, default=64, help="Number of points on the perimeter of the mesh")
+    parser.add_argument('-o', '--out_dir', type=pathlib.Path, default="ref_data", help="Folder to dump output files in. Will be created recursively if it does not exist.")
+    args = parser.parse_args()
+    n_points = args.num_points
+    working_dir = os.path.expanduser(args.working_dir)
+    out_dir = os.path.expanduser(args.out_dir)
+
+    gen_ref_data(n_points, working_dir, out_dir)
