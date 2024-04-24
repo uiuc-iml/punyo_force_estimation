@@ -4,13 +4,13 @@ Use linear FE (plane stress assumption) to predict forces from punyo sensor rgb 
 
 To capture RGB images, you can use ROS or the realsense API.
 
-To capture pressure data you'll need TRI's repository for the punyo sensor to run the micro-ros thingy.
+To capture pressure data you'll need TRI's repository for the punyo sensor to interface with the pressure sensor via micro-ROS.
 
 
 ## Dependencies
 
 ```
-pip install numpy open3d cvxpy torch meshio scipy opencv-python pygmsh
+pip install build numpy open3d cvxpy torch meshio scipy opencv-python pygmsh
 ```
 
 ## Installing it
