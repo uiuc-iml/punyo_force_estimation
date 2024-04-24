@@ -6,3 +6,6 @@ meshio
 scipy
 opencv-python
 pygmsh
+
+build
+hatchling

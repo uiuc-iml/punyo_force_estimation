@@ -1,8 +1,16 @@
 """ Generate a mesh corresponding to the bubble without any forces applied to it.
 
 Start from a flat mesh, and project it up along the camera direction to the bubble.
-Then "fix" the XY coordinates by
+Then "fix" the XY coordinates by pushing them back to match the original (flat mesh)
+XY coordinates, which helps keep things more evenly sized.
+
+TODO: the "spreading" procedure should be redefined based on the actual areas of
+triangles on the 3D mesh, not (jankily and implicitly) based on the areas of triangles
+on the flat mesh. The method described above is a hack that helps (better than nothing)
+but a hack nonetheless.
 """
+import os
+
 import numpy as np
 import scipy.interpolate
 import pygmsh
@@ -33,7 +41,8 @@ ATMOSPHERIC_PRESSURE = 101325   # Pascals
 # dat = np.load("inflating_sequence/pressure.0.npy")
 # ATMOSPHERIC_PRESSURE = dat[1] * 100
 
-def gen_ref_data(n_points, working_dir, out_dir, reference_frames=[0,1,2,3,4], still_frames=list(range(0, 30, 1))):
+def gen_ref_data(n_points, working_dir, out_dir="ref_data",
+                 reference_frames=[0,1,2,3,4], still_frames=list(range(0, 30, 1))):
     mesh = gen_flat_mesh(n_points)
     os.makedirs(out_dir, exist_ok=True)
     mesh.write(f"{out_dir}/flat.vtk")
@@ -79,7 +88,6 @@ def gen_ref_data(n_points, working_dir, out_dir, reference_frames=[0,1,2,3,4], s
     point_zs_1.dump(f"{out_dir}/point_stdevs.npy")
 
 if __name__ == "__main__":
-    import os
     import argparse
     import pathlib
 

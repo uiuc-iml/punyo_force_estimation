@@ -4,3 +4,5 @@ dist
 
 *.swp
 *.editor_log.txt
+env
+demo/ref_data
