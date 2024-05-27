@@ -1,7 +1,8 @@
+import os
 import json
 import numpy as np
-from punyo_force_estimation.force_module.force_from_punyo import ForceFromPunyo
-from punyo_force_estimation.utils import load_frames, load_data, unpack_mesh
+from src.punyo_force_estimation.force_module.force_from_punyo import ForceFromPunyo
+from src.punyo_force_estimation.utils import load_frames, load_data, unpack_mesh
 
 if __name__ == "__main__":
     import argparse
@@ -21,13 +22,19 @@ if __name__ == "__main__":
 
     points, triangles, boundary, boundary_mask = unpack_mesh(f"{ref_dir}/equalized.vtk")
     force_estimator = ForceFromPunyo(reference_rgbs, reference_pcds, reference_pressures, points, triangles, boundary, 
-                                     rest_internal_force=None, precompile=True, verbose=True)
+                                     rest_internal_force=None, precompile=False, verbose=True)
 
     START_FRAME = 30
     END_FRAME = len(robot_dat)
+    os.makedirs(f"{working_dir}/result", exist_ok=True)
     for i in range(START_FRAME, END_FRAME):
-        rgb, pcd, pressure = load_data(working_dir, i)
+        pressure, pcd, rgb = load_data(f"{working_dir}/expand", i)
         force_estimator.update(rgb, pcd, pressure)
 
         contact_forces = force_estimator.observed_force
         displaced_points = force_estimator.current_points
+
+        np.save(f"{working_dir}/result/force_{i}.npy", contact_forces)
+        np.save(f"{working_dir}/result/points_{i}.npy", displaced_points)
+
+        print(f"Frame {i} done.")

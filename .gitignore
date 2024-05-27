@@ -6,3 +6,4 @@ dist
 *.editor_log.txt
 env
 demo/ref_data
+data
