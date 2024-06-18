@@ -98,13 +98,16 @@ class LinearPlaneStressModel(BaseMaterialModel):
         return -r   # TODO hack
 
 def triangle_optimal_rotation(x1, x2, x3, y1, y2, y3):
+    tsr_params = {'dtype': x1.dtype, 'device': x1.device}
     x_centroid = (x1 + x2 + x3) / 3
     y_centroid = (y1 + y2 + y3) / 3
     A = (torch.stack([x1, x2, x3], dim=1) - x_centroid).T
     B = (torch.stack([y1, y2, y3], dim=1) - y_centroid).T
     u, s, vh = torch.linalg.svd(A @ B.T)
     # convert the output from a (possibly only) orthogonal matrix to rotation matrix
-    s_fudge = torch.diag(torch.tensor([1, 1, torch.linalg.det(u @ vh)]))
+    s_fudge = torch.eye(3, **tsr_params)
+    s_fudge[2, 2] = torch.linalg.det(u @ vh)
+    # s_fudge = torch.diag(torch.tensor([1, 1, torch.linalg.det(u @ vh)]))
     R = (u @ s_fudge @ vh)
     return R
 
