@@ -3,6 +3,7 @@ import numpy as np
 import scipy
 import matplotlib.pyplot as plt
 from pathlib import Path
+import pickle
 import open3d as o3d
 import imageio
 import trimesh
@@ -30,14 +31,14 @@ def rgbd_to_pc(color_img, depth_img, depth_scale=10000.0, depth_max=1.0, gray_im
 
 if __name__ == "__main__":
     working_dir = "data/shoe"
-    move_idx_lst = [106]
-    move_direction = np.array([0.0, 0.0, 1.0])
+    precomputed = True
 
-    total_frame = 148
-    rgbs = [imageio.v2.imread(f"{working_dir}/raw/punyo_color_{i}.png") for i in range(total_frame)]
-    depths = [imageio.v2.imread(f"{working_dir}/raw/punyo_depth_{i}.png") for i in range(total_frame)]
     pressure_scale = 100
     pressures = np.load(f"{working_dir}/raw/pressure.npy") * pressure_scale
+
+    total_frame = len(pressures)
+    rgbs = [imageio.v2.imread(f"{working_dir}/raw/punyo_color_{i}.png") for i in range(total_frame)]
+    depths = [imageio.v2.imread(f"{working_dir}/raw/punyo_depth_{i}.png") for i in range(total_frame)]
     rgbs_o3d = [o3d.geometry.Image(rgbs[i]) for i in range(total_frame)]
     depths_o3d = [o3d.geometry.Image(depths[i]) for i in range(total_frame)]
     pointclouds = [rgbd_to_pc(rgbs_o3d[i], depths_o3d[i])[0] for i in range(total_frame)]
@@ -53,7 +54,7 @@ if __name__ == "__main__":
 
     points, triangles, boundary, boundary_mask = unpack_mesh(f"{ref_dir}/equalized.vtk")
     force_estimator = ForceFromPunyo(reference_rgbs, reference_pcds, reference_pressures, points, triangles, boundary, 
-                                     rest_internal_force=None, material_model=LinearSpringModel(), precompile=False, verbose=True)
+                                     rest_internal_force=None, material_model=LinearSpringModel(), precompile=False, verbose=False)
     
     # force_estimator = ForceFromPunyo(reference_rgbs, reference_pcds, reference_pressures, points, triangles, boundary, 
     #                                  rest_internal_force=None, precompile=False, verbose=False)
@@ -63,13 +64,6 @@ if __name__ == "__main__":
     punyo_pcd = o3d.geometry.PointCloud()
     punyo_pcd.points = o3d.utility.Vector3dVector(punyo_rest)
     # o3d.visualization.draw_geometries_with_editing([punyo_pcd])
-
-    boundary_mask[move_idx_lst] = 1
-
-    boundary_mask_flatten = np.repeat(boundary_mask[..., None], 3, axis=1).reshape(-1)
-    boundary_mask_flatten = boundary_mask_flatten == 1
-
-    num_fix_pts = np.sum(boundary_mask_flatten)
 
     # TODO: load K_b matrix (K_v matrix is the stiffness of VSF)
     K_B = force_estimator.force_predictor.static_K.toarray()
@@ -83,42 +77,46 @@ if __name__ == "__main__":
     # plt.hist(K_B.flatten(), bins=100)
     # plt.show()
 
-    move_init_pts = punyo_rest[move_idx_lst, :]
-    free_init_pts = punyo_rest[boundary_mask == 0, :]
-    
-    colors = np.zeros(punyo_rest.shape)
-    colors[move_idx_lst, :] = [1, 0, 0]
-    colors[boundary_mask == 1, :] += [0, 0, 1]
-    colors[boundary_mask == 0, :] = [0, 1, 0]
-    punyo_pcd.colors = o3d.utility.Vector3dVector(colors)
-    # o3d.visualization.draw_geometries_with_editing([punyo_pcd])
-
     punyo_deformed_pcd = o3d.geometry.PointCloud()
     punyo_deformed_pcd.points = o3d.utility.Vector3dVector(punyo_rest)
-    punyo_deformed_pcd.colors = o3d.utility.Vector3dVector(colors)
+    punyo_deformed_pcd.paint_uniform_color([1.0, 0.0, 0.5])
 
     punyo_deformed_mesh = o3d.geometry.TriangleMesh()
     punyo_deformed_mesh.vertices = o3d.utility.Vector3dVector(punyo_rest)
-    punyo_deformed_mesh.triangles = o3d.utility.Vector3iVector(triangles)
+    # punyo_deformed_mesh.triangles = o3d.utility.Vector3iVector(triangles)
+    double_triangles = np.vstack([triangles, triangles[:, ::-1]])
+    punyo_deformed_mesh.triangles = o3d.utility.Vector3iVector(double_triangles)
     punyo_deformed_mesh.compute_vertex_normals()
+
+    punyo_raw_pcd = o3d.geometry.PointCloud()
 
     start_time = time.time()
     contact_forces_lst = []
     opt_deformed_points_lst = []
     raw_deformed_points_lst = []
-    for pressure, pcd, rgb in zip(pressures, pointclouds, rgbs):
-        # raw_deformed_points, data = force_estimator.deformation_estimator.estimate(rgb, pcd)
-        # raw_deformed_points = raw_deformed_points @ PC_ROTATION_MATRIX
-        # raw_deformed_points_lst.append(raw_deformed_points)
+    if precomputed:
+        contact_forces_lst = pickle.load(open(f"{working_dir}/contact_forces.pkl", "rb"))
+        opt_deformed_points_lst = pickle.load(open(f"{working_dir}/opt_deformed_points.pkl", "rb"))
+        raw_deformed_points_lst = pickle.load(open(f"{working_dir}/raw_deformed_points.pkl", "rb"))
+    else:
+        for pressure, pcd, rgb in zip(pressures, pointclouds, rgbs):
+            # raw_deformed_points, data = force_estimator.deformation_estimator.estimate(rgb, pcd)
+            # raw_deformed_points = raw_deformed_points @ PC_ROTATION_MATRIX
+            # raw_deformed_points_lst.append(raw_deformed_points)
 
-        force_estimator.update(rgb, pcd, pressure)
-       
-        raw_deformed_points_lst.append(force_estimator._raw_points.copy())
-        opt_deformed_points_lst.append(force_estimator.current_points.copy())
-        contact_forces_lst.append(force_estimator.observed_force.copy())
+            force_estimator.update(rgb, pcd, pressure)
+        
+            raw_deformed_points_lst.append(force_estimator._raw_points.copy())
+            opt_deformed_points_lst.append(force_estimator.current_points.copy())
+            contact_forces_lst.append(force_estimator.observed_force.copy())
+
+        pickle.dump(contact_forces_lst, open(f"{working_dir}/contact_forces.pkl", "wb"))
+        pickle.dump(opt_deformed_points_lst, open(f"{working_dir}/opt_deformed_points.pkl", "wb"))
+        pickle.dump(raw_deformed_points_lst, open(f"{working_dir}/raw_deformed_points.pkl", "wb"))
+
     print('Time elapsed:', time.time() - start_time)
 
-    def update_pts(deformed_points, contact_forces):
+    def update_pts(deformed_points, contact_forces, raw_pts=None):
         # delta_points = deformed_points - punyo_rest
 
         # if contact_forces is None:
@@ -131,6 +129,10 @@ if __name__ == "__main__":
         punyo_deformed_pcd.normals = o3d.utility.Vector3dVector(contact_forces)
         punyo_deformed_mesh.vertices = o3d.utility.Vector3dVector(deformed_points)
         punyo_deformed_mesh.compute_vertex_normals()
+
+        if raw_pts is not None:
+            punyo_raw_pcd.points = o3d.utility.Vector3dVector(raw_pts @ PC_ROTATION_MATRIX)
+            punyo_raw_pcd.paint_uniform_color([0, 1.0, 1.0])
     
     current_frame_index = 0
     force_scale = 1.0
@@ -149,10 +151,12 @@ if __name__ == "__main__":
             # update_pts(raw_deformed_points)            
 
             update_pts(opt_deformed_points_lst[current_frame_index], 
-                       -force_scale*contact_forces_lst[current_frame_index])
+                       -force_scale*contact_forces_lst[current_frame_index], 
+                       raw_pts=pointclouds[current_frame_index])
 
             vis.update_geometry(punyo_deformed_pcd)
             vis.update_geometry(punyo_deformed_mesh)
+            vis.update_geometry(punyo_raw_pcd)
             vis.poll_events()
             vis.update_renderer()
         return change_frame
@@ -172,7 +176,7 @@ if __name__ == "__main__":
     key_to_callback[ord('Q')] = lambda vis: func(vis, 0.01)
     key_to_callback[ord('W')] = lambda vis: func(vis, -0.01)
 
-    o3d.visualization.draw_geometries_with_key_callbacks([punyo_deformed_pcd, punyo_deformed_mesh], key_to_callback)
+    o3d.visualization.draw_geometries_with_key_callbacks([punyo_deformed_pcd, punyo_raw_pcd, punyo_deformed_mesh], key_to_callback)
 
     # animate_callback = create_change_frame(1)
     # o3d.visualization.draw_geometries_with_animation_callback([punyo_deformed_pcd, punyo_deformed_mesh], animate_callback)
