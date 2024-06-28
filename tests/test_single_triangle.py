@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
     move_idx = 0
     move_step = 0.01
-    normal_scale = 10.0
+    normal_scale = 100.0
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(p.numpy().reshape(-1, 3))
@@ -30,6 +30,8 @@ if __name__ == "__main__":
             u = torch.tensor(current_point.reshape(-1), dtype=torch.float64) - p
             f = cps.element_forces(p, u, (1.0, 0.3, np.array([1.0, 0.0, 0.0], dtype=np.float64)))
             pcd.normals = o3d.utility.Vector3dVector(f.numpy().reshape(-1, 3) * normal_scale)
+            opt = vis.get_render_option()
+            opt.point_show_normal = True
             vis.update_geometry(pcd)
             vis.update_geometry(mesh)
             vis.poll_events()
