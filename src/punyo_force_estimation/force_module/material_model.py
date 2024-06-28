@@ -95,7 +95,43 @@ class LinearPlaneStressModel(BaseMaterialModel):
 
     def element_stiffness(self, p, u, material):
         r = self.element_stiffness_autodiff(p, u, material)
-        return -r   # TODO hack
+        return r   # TODO hack
+
+class LinearSpringModel(BaseMaterialModel):
+    def __init__(self):
+        super().__init__()
+    
+    def element_forces(self, p, u, material):
+        E, nu, tri_forces = material
+        o1, p1, q1 = p.split(3, dim=0)
+        do, dp, dq = u.split(3, dim=0)
+        o2 = o1 + do
+        p2 = p1 + dp
+        q2 = q1 + dq
+
+        # lop1 = torch.norm(p1 - o1)
+        # lop2 = torch.norm(p2 - o2)
+        # lqo1 = torch.norm(q1 - o1)
+        # lqo2 = torch.norm(q2 - o2)
+        # lpq1 = torch.norm(p1 - q1)
+        # lpq2 = torch.norm(p2 - q2)
+
+        # fop = E * (lop2 - lop1)
+        # fqo = E * (lqo2 - lqo1)
+        # fpq = E * (lpq2 - lpq1)
+
+        # fo = (p2 - o2) / lop2 * fop + (q2 - o2) / lqo2 * fqo
+        # fp = (o2 - p2) / lop2 * fop + (q2 - p2) / lpq2 * fpq
+        # fq = (o2 - q2) / lqo2 * fqo + (p2 - q2) / lpq2 * fpq
+
+        fo = E * (p2 - o2 - p1 + o1 + q2 - o2 + q1 - o1)
+        fp = E * (o2 - p2 - o1 + p1 + q2 - p2 + q1 - p1)
+        fq = E * (o2 - q2 - o1 + q1 + p2 - q2 + p1 - q1)
+
+        return torch.cat([fo, fp, fq]).flatten()
+
+    def element_stiffness(self, p, u, material):
+        return self.element_stiffness_autodiff(p, u, material)
 
 def triangle_optimal_rotation(x1, x2, x3, y1, y2, y3):
     tsr_params = {'dtype': x1.dtype, 'device': x1.device}
@@ -173,7 +209,7 @@ class CorotatedPlaneStressModel(BaseMaterialModel):
         return forces
 
     def element_stiffness(self, p, u, material):
-        r = -self.element_stiffness_autodiff(p, u, material)
+        r = self.element_stiffness_autodiff(p, u, material)
         return r
 
 
@@ -255,3 +291,65 @@ class LinearTriangleModel(BaseMaterialModel):
 
     def element_stiffness(self, p, u, material):
         return self.element_stiffness_autodiff(p, u, material)
+
+
+
+class DebugPlaneStressModel(BaseMaterialModel):
+    def __init__(self):
+        super().__init__()
+
+
+    def element_forces(self, p, u, material):
+        """Compute the forces given the displacement and material parameters."""
+        E = material[0]
+        nu = material[1]
+
+        o1, p1, q1 = p.split(3, dim=0)
+        do, dp, dq = u.split(3, dim=0)
+        o2 = o1 + do
+        p2 = p1 + dp
+        q2 = q1 + dq
+
+        n1 = torch.cross(p1 - o1, q1 - o1)
+        i1 = (p1 - o1) / torch.norm(p1 - o1)
+        j1 = torch.cross(n1, i1) / torch.norm(n1)
+        n2 = torch.cross(p2 - o2, q2 - o2)
+        i2 = (p2 - o2) / torch.norm(p2 - o2)
+        j2 = torch.cross(n2, i2) / torch.norm(n2)
+
+        # Rotation to local coordinate
+        R1 = torch.stack([i1, j1], dim=0)
+        R2 = torch.stack([i2, j2], dim=0)
+        a1 = R1 @ (p1 - o1)
+        b1 = R1 @ (q1 - o1)
+        a2 = R2 @ (p2 - o2)
+        b2 = R2 @ (q2 - o2)
+
+        det_J = b1[0] * (b1 - a1)[1] - b1[1] * (b1 - a1)[0]
+        B = torch.zeros((3, 6), device=p.device, dtype=p.dtype)
+        B[0, 0] = b1[1] - a1[1]
+        B[0, 2] = -b1[1]
+        B[0, 4] = a1[1]
+        B[1, 1] = a1[0] - b1[0]
+        B[1, 3] = b1[0]
+        B[1, 5] = -a1[0]
+        B[2, 0] = a1[0] - b1[0]
+        B[2, 1] = b1[1] - a1[1]
+        B[2, 2] = b1[0]
+        B[2, 3] = -b1[1]
+        B[2, 4] = -a1[0]
+        B[2, 5] = a1[1]
+
+        B /= det_J
+        A = 0.5 * torch.abs(det_J)
+        D = (E / (1 - nu*nu)) * torch.tensor([[1, nu, 0], [nu, 1, 0], [0, 0, (1 - nu) / 2]], device=p.device, dtype=p.dtype)
+        K = A * B.T @ D @ B
+        u_2d = torch.cat([torch.zeros(2), a2 - a1, b2 - b1]).flatten()
+        f_2d = K @ u_2d
+        f_3d = (R2.T @ f_2d.reshape(3, 2).T).T.flatten()
+        forces = f_3d
+        return forces
+
+    def element_stiffness(self, p, u, material):
+        r = self.element_stiffness_autodiff(p, u, material)
+        return r   # TODO hack
