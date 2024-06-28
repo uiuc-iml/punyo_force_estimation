@@ -110,7 +110,7 @@ class CoupledForcePrediction:
         self.dt = 0
 
     def update_penalties(self, force_penalty, displacement_penalty):
-        f_ext = -(self.static_K @ self._u + self._known_force.T.flatten())
+        f_ext = -(-self.static_K @ self._u + self._known_force.T.flatten())
 
         static_W_u = build_coo(displacement_penalty, eps=1e-7)
 
@@ -142,14 +142,14 @@ class CoupledForcePrediction:
         static_K = assemble_K_mat(self.elements, self.element_params, self.material_model,
                               self.rest_points, observed_points)
 
-        f_ext = -(static_K @ self._u + self._known_force.T.flatten())
+        f_ext = -(-static_K @ self._u + self._known_force.T.flatten())
 
         if self.method == "L1":
             f_ext_v = cp.reshape(f_ext, (3, self._n))
-            f_norms = cp.multiply(cp.norm(f_ext_v, 2, axis=0), force_penalty)
+            f_norms = cp.multiply(cp.norm(f_ext_v, 2, axis=0), self.force_penalty)
             self.f_norm_penalty = cp.norm1(f_norms)
         if self.method == "L2":
-            static_W_f = build_coo(force_penalty, eps=1e-7)
+            static_W_f = build_coo(self.force_penalty, eps=1e-7)
             self.f_norm_penalty = cp.quad_form(f_ext, static_W_f, assume_PSD=True)
 
         self.cp_objective = cp.Minimize(self.f_norm_penalty + self.u_penalty)
@@ -224,26 +224,30 @@ class CoupledForcePrediction:
         #
         # Approximate (total) timing: 1.5-5sec without compilation
         #   SCS Solver time: ~0.5sec
+
+        ################# TESTING #################
         if self.precompile:
             res = self.cp_problem.solve(solver="SCS", warm_start=True, verbose=self.verbose, eps=1e-4, use_indirect=True)
         else:
             res = self.cp_problem.solve(ignore_dpp=True, solver="SCS", warm_start=False, verbose=self.verbose, eps=1e-4)
+        # self._u.value = observed_points.flatten().numpy() - self.rest_points.flatten()
+        ############### END TESTING ###############
 
         u_opt:np.ndarray = self._u.value
 
         t1 = time.time()
-        if verbose or self.verbose:
-            print("min objective:", res, " time:", t1-t0) 
-            print("solver status:", self.cp_problem.status)
-            print("force cost:", self.f_norm_penalty.value)
+        # if verbose or self.verbose:
+        #     print("min objective:", res, " time:", t1-t0) 
+        #     print("solver status:", self.cp_problem.status)
+        #     print("force cost:", self.f_norm_penalty.value)
 
-            print("displacement cost:", self.u_penalty.value)
+        #     print("displacement cost:", self.u_penalty.value)
         for [node] in self._boundary_idx:
             u_opt[3*node:3*(node+1)] = 0
 
         corrected_points = self.rest_points + u_opt.reshape((-1, 3))
         #corrected_points = observed_points + u_opt.reshape((-1, 3))
-        f_internal = sp_K @ u_opt
+        f_internal = -sp_K @ u_opt
         observed_force = -(f_internal + known_force.flatten()).reshape((-1, 3))
         resid = (self.f_norm_penalty.value, self.u_penalty.value)
         #print(f_total.value)
