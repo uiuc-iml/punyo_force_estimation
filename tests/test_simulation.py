@@ -31,8 +31,8 @@ if __name__ == "__main__":
     move_direction = np.array([0.0, 0.0, 1.0])
 
     total_frame = 148
-    rgbs = [imageio.imread(f"{working_dir}/raw/punyo_color_{i}.png") for i in range(total_frame)]
-    depths = [imageio.imread(f"{working_dir}/raw/punyo_depth_{i}.png") for i in range(total_frame)]
+    rgbs = [imageio.v2.imread(f"{working_dir}/raw/punyo_color_{i}.png") for i in range(total_frame)]
+    depths = [imageio.v2.imread(f"{working_dir}/raw/punyo_depth_{i}.png") for i in range(total_frame)]
     pressure_scale = 100
     pressures = np.load(f"{working_dir}/raw/pressure.npy") * pressure_scale
     rgbs_o3d = [o3d.geometry.Image(rgbs[i]) for i in range(total_frame)]
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     points, triangles, boundary, boundary_mask = unpack_mesh(f"{ref_dir}/equalized.vtk")
     force_estimator = ForceFromPunyo(reference_rgbs, reference_pcds, reference_pressures, points, triangles, boundary, 
-                                     rest_internal_force=None, material_model=LinearSpringModel(), precompile=False, verbose=True)
+                                     rest_internal_force=None, material_model=DebugPlaneStressModel(), precompile=False, verbose=True)
     
     # force_estimator = ForceFromPunyo(reference_rgbs, reference_pcds, reference_pressures, points, triangles, boundary, 
     #                                  rest_internal_force=None, precompile=False, verbose=True)
@@ -70,7 +70,8 @@ if __name__ == "__main__":
 
     # TODO: load K_b matrix (K_v matrix is the stiffness of VSF)
     K_B = force_estimator.force_predictor.static_K.toarray()
-
+    
+    # NOTE: check the sparsity of K_B
     # for row_idx, col_idx in zip(*K_B.nonzero()):
     #     row_idx //= 3
     #     col_idx //= 3
