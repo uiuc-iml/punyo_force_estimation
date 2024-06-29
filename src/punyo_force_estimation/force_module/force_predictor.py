@@ -227,7 +227,7 @@ class CoupledForcePrediction:
 
         ################# TESTING #################
         if self.precompile:
-            res = self.cp_problem.solve(solver="SCS", warm_start=True, verbose=self.verbose, eps=1e-4, use_indirect=True)
+            res = self.cp_problem.solve(solver="SCS", warm_start=True, verbose=self.verbose, eps=1e-4, use_indirect=False)
         else:
             res = self.cp_problem.solve(ignore_dpp=True, solver="SCS", warm_start=False, verbose=self.verbose, eps=1e-4)
         # self._u.value = observed_points.flatten().numpy() - self.rest_points.flatten()
