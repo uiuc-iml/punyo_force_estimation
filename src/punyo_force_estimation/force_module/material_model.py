@@ -131,7 +131,8 @@ class LinearSpringModel(BaseMaterialModel):
         return torch.cat([fo, fp, fq]).flatten()
 
     def element_stiffness(self, p, u, material):
-        return self.element_stiffness_autodiff(p, u, material)
+        K_e = -self.element_stiffness_autodiff(p, u, material)
+        return K_e
 
 def triangle_optimal_rotation(x1, x2, x3, y1, y2, y3):
     tsr_params = {'dtype': x1.dtype, 'device': x1.device}
