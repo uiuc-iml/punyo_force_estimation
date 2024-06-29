@@ -3,6 +3,9 @@ import numpy as np
 import open3d as o3d
 from .force_module.deformation_estimator import DeformationEstimation
 
+import os
+REFERENCE_MESH_PATH = os.path.join(os.path.dirname(__file__), "ref_data/equalized.vtk")
+
 def pointcloud(points):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
