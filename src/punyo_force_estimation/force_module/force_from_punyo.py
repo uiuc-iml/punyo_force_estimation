@@ -99,7 +99,7 @@ class ForceFromPunyo:
         self.rest_internal_force = rest_internal_force
         
         self.precompile = precompile
-        self.force_predictor = None
+        self.force_predictor:CoupledForcePrediction = None
         self.cache_E = None
         self.update_opt_params(force_penalty, displacement_penalty, optimization_params)
 
@@ -225,10 +225,12 @@ class ForceFromPunyo:
 
         for v in self.boundary:
             corrected_points[v, :] = self.undeformed_points[v, :]
+            observed_force[v, :] = 0
 
         self.current_pressure = filt_pressure
         self.current_points = corrected_points
         self.observed_force = observed_force
+        self.observed_pressure = observed_force / areas[:, None]
         self.flow_data = data
 
         # debug/vis use
