@@ -37,9 +37,9 @@ if __name__ == "__main__":
     move_idx_lst = [106]
     move_direction = np.array([0.0, 0.0, 1.0])
 
-    rest_pts = np.load('/home/motion/plant-model/out_data/obj_asset_dataset/white_adidas_superstar_angle00/rest_pts.npy')
+    vsf_rest_pts = np.load('/home/motion/plant-model/out_data/obj_asset_dataset/white_adidas_superstar_angle00/rest_pts.npy')
     vsf_pcd = o3d.geometry.PointCloud()
-    vsf_pcd.points = o3d.utility.Vector3dVector(rest_pts)
+    vsf_pcd.points = o3d.utility.Vector3dVector(vsf_rest_pts)
 
     punyo_curr_pts = np.load('/home/motion/plant-model/out_data/small_obj_sim_deform/debug_white_adidas_superstar_angle00_trail1/seq_000/punyo_curr_pts_00057.npy')
 
@@ -73,31 +73,18 @@ if __name__ == "__main__":
 
     sim_out_dir = '/home/motion/plant-model/out_data/small_obj_sim_deform/debug_white_adidas_superstar_angle00_trail1/seq_000'
 
-    punyo2vsf_trans_lst = []
-    # for step_idx in range(0, total_frame, 10):
-    for step_idx in [total_frame-1]:
+    vsf2punyo_trans_lst = []
+    for step_idx in range(0, total_frame):
         ee2base_H = np.load(f'{sim_out_dir}/ee2base_H_{step_idx:05d}.npy')
-
-        punyo_rest = force_estimator.undeformed_points.numpy()
-        punyo_rest = punyo_rest @ PC_ROTATION_MATRIX.T
-        punyo_pcd = o3d.geometry.PointCloud()
-        punyo_pcd.points = o3d.utility.Vector3dVector(punyo_rest)
-        punyo_pcd.transform(kinova_punyo2ee_np)
-        punyo_pcd.transform(ee2base_H)
 
         punyo_rot_mat = np.eye(4)
         punyo_rot_mat[:3, :3] = PC_ROTATION_MATRIX
         trans = ee2base_H @ kinova_punyo2ee_np @ punyo_rot_mat
 
-        new_punyo_pcd = o3d.geometry.PointCloud()
-        new_punyo_pcd.points = o3d.utility.Vector3dVector(force_estimator.undeformed_points.numpy())
-        new_punyo_pcd.transform(trans)
-
-        punyo_curr_pcd.paint_uniform_color([1.0, 0.5, 0.0])
-        coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
-        o3d.visualization.draw_geometries([punyo_pcd, coord_frame, punyo_curr_pcd, new_punyo_pcd])
-
-    input()
+        vsf2punyo_trans_lst.append(np.linalg.inv(trans))
+    
+    vsf_pcd.transform(vsf2punyo_trans_lst[0])
+    punyo_rest = force_estimator.undeformed_points.numpy()
 
     boundary_mask_flatten = np.repeat(boundary_mask[..., None], 3, axis=1).reshape(-1)
     boundary_mask_flatten = boundary_mask_flatten == 1
@@ -121,8 +108,6 @@ if __name__ == "__main__":
     colors[move_idx_lst, :] = [1, 0, 0]
     colors[boundary_mask == 1, :] += [0, 0, 1]
     colors[boundary_mask == 0, :] = [0, 1, 0]
-    punyo_pcd.colors = o3d.utility.Vector3dVector(colors)
-    # o3d.visualization.draw_geometries_with_editing([punyo_pcd])
 
     sorted_free_idx = np.sort(np.where(boundary_mask == 0)[0])
 
@@ -132,13 +117,6 @@ if __name__ == "__main__":
     punyo_deformed_pcd.points = o3d.utility.Vector3dVector(punyo_rest)
     punyo_deformed_pcd.colors = o3d.utility.Vector3dVector(colors)
 
-
-    init_point = punyo_rest[move_idx_lst, :]
-    init_color = colors.copy()
-
-    vsf_pcd = o3d.geometry.PointCloud()
-    vsf_pcd.points = o3d.utility.Vector3dVector(init_point)
-
     punyo_deformed_mesh = o3d.geometry.TriangleMesh()
     punyo_deformed_mesh.vertices = o3d.utility.Vector3dVector(punyo_rest)
     punyo_deformed_mesh.triangles = o3d.utility.Vector3iVector(triangles)
@@ -147,59 +125,86 @@ if __name__ == "__main__":
     base_triangles = np.load('data/mesh_base_triangles.npy')
     punyo_trimesh = Trimesh(vertices=punyo_rest, faces=np.vstack([triangles, base_triangles]))
 
-    contact_A = None
-    contact_bool = False
-    init_contact_point = None
+    contact_A = np.zeros((vsf_rest_pts.shape[0], np.sum(boundary_mask == 0)))
+
+    vsf_colors = np.tile([0.0, 1.0, 0.0], (vsf_rest_pts.shape[0], 1))
+
+    contact_bool = np.zeros(vsf_rest_pts.shape[0], dtype=bool)
+    contact_mesh_pts = np.zeros(vsf_rest_pts.shape)
+    contact_tri_idx = np.zeros(vsf_rest_pts.shape[0], dtype=int)
     vsf_stiffness = 10000.0
-    def update_pts(current_move_vector):
-        global contact_A, contact_bool, colors, init_contact_point
-        ext_delta_pts = np.zeros_like(punyo_rest)
-        ext_delta_pts[move_idx_lst] = current_move_vector
+    def update_pts(trans_matrix):
+        global contact_A, contact_bool, colors, vsf_colors, contact_tri_idx
+        curr_vsf_pts = vsf_rest_pts @ trans_matrix[:3, :3].T + trans_matrix[:3, 3]
+        vsf_pcd.points = o3d.utility.Vector3dVector(curr_vsf_pts)
+        # ext_delta_pts = np.zeros_like(punyo_rest)
+        # ext_delta_pts[move_idx_lst] = current_move_vector
 
-        curr_vsf_point = init_vsf_point + current_move_vector
+        # curr_vsf_point = init_vsf_point + current_move_vector
 
-        vsf_pcd.points = o3d.utility.Vector3dVector(curr_vsf_point)
+        # vsf_pcd.points = o3d.utility.Vector3dVector(curr_vsf_point)
 
-        curr_contact_bool = punyo_trimesh.contains(curr_vsf_point)
-        # Detect if the point is inside the mesh
-        if not contact_bool:
-            print('INFO: Point is outside the mesh')
-            vsf_pcd.paint_uniform_color([1, 0, 0])
-        else:
-            print('INFO: Point is inside the mesh')
-            vsf_pcd.paint_uniform_color([0, 1, 0])
+        start_time = time.time()
+        curr_contact_bool = punyo_trimesh.contains(curr_vsf_pts)
+        print('contact check time:', time.time() - start_time)
+
+        vsf_colors[curr_contact_bool, :] = [1.0, 0.0, 0.0]
+        vsf_colors[~curr_contact_bool, :] = [0.0, 1.0, 0.0]
+        vsf_pcd.colors = o3d.utility.Vector3dVector(vsf_colors)
+
+        # # Detect if the point is inside the mesh
+        # if not contact_bool:
+        #     print('INFO: Point is outside the mesh')
+        #     vsf_pcd.paint_uniform_color([1, 0, 0])
+        # else:
+        #     print('INFO: Point is inside the mesh')
+        #     vsf_pcd.paint_uniform_color([0, 1, 0])
         
-        if not contact_bool and curr_contact_bool:
-
-            init_contact_point = curr_vsf_point.copy()
+        new_contact_bool = np.logical_and(curr_contact_bool, ~contact_bool)
+        remove_contact_bool = np.logical_and(~curr_contact_bool, contact_bool)
+        if np.any(new_contact_bool):
+            new_contact_pts = curr_vsf_pts[new_contact_bool, :]
+            contact_mesh_pts[new_contact_bool, :] = new_contact_pts
 
             # find closest triangle
-            closest_tri, dist, closest_tri_idx = trimesh.proximity.closest_point(punyo_trimesh, curr_vsf_point)
+            closest_tri, dist, closest_tri_idx = trimesh.proximity.closest_point(punyo_trimesh, new_contact_pts)
             triangles_nearest = punyo_trimesh.triangles[closest_tri_idx]
-            barycentric = trimesh.triangles.points_to_barycentric(triangles_nearest, curr_vsf_point)
+            contact_tri_idx[new_contact_bool] = closest_tri_idx
+            barycentric = trimesh.triangles.points_to_barycentric(triangles_nearest, new_contact_pts)
 
             closest_vertex_idx = punyo_trimesh.faces[closest_tri_idx]
             colors[closest_vertex_idx, :] = [0.7, 0.7, 1.0]
 
-            contact_A = np.zeros(punyo_rest.shape[0])
-            contact_A[closest_vertex_idx] = barycentric
-            contact_A = contact_A[boundary_mask == 0]
-            contact_A = np.kron(contact_A.reshape(1, -1), np.eye(3))
-            print('contact_A shape:', contact_A.shape)
+            row_idx = np.repeat(np.arange(new_contact_pts.shape[0]), 3)
+            col_idx = closest_vertex_idx.flatten()
 
-        elif contact_bool and not curr_contact_bool:
-            colors = init_color.copy()
+            new_contact_A = np.zeros((new_contact_pts.shape[0], punyo_rest.shape[0]))
+            new_contact_A[row_idx, col_idx] = barycentric.flatten()
+            new_contact_A = new_contact_A[:, boundary_mask == 0]
+            
+            contact_A[new_contact_bool, :] = new_contact_A
+        if np.any(remove_contact_bool):
+            print('remove contact:', np.where(remove_contact_bool)[0])
+            contact_A[remove_contact_bool, :] = 0.0
+            remove_vertex_idx = punyo_trimesh.faces[contact_tri_idx[remove_contact_bool]]
+            print('remove_vertex_idx:', remove_vertex_idx.flatten())
+            colors[remove_vertex_idx.flatten(), :] = [0.0, 1.0, 0.0]
+
+        # elif contact_bool and not curr_contact_bool:
+        #     colors = init_color.copy()
 
         # Update contact state
         contact_bool = curr_contact_bool
 
         punyo_deformed_pcd.colors = o3d.utility.Vector3dVector(colors)
 
-        if curr_contact_bool:
-            K_ff_prime = K_ff + vsf_stiffness * contact_A.T @ contact_A
-            delta_vsf_pts = curr_vsf_point - init_contact_point
+        if np.any(curr_contact_bool):
+            expand_contact_A = np.kron(contact_A[contact_bool, :], np.eye(3))
+            print('expand_contact_A shape:', expand_contact_A.shape)
+            K_ff_prime = K_ff + vsf_stiffness * expand_contact_A.T @ expand_contact_A
+            delta_vsf_pts = curr_vsf_pts[contact_bool, :] - contact_mesh_pts[contact_bool, :]
             print('delta_vsf_pts:', delta_vsf_pts)
-            contact_effect = vsf_stiffness * contact_A.T @ delta_vsf_pts.flatten()
+            contact_effect = vsf_stiffness * expand_contact_A.T @ delta_vsf_pts.flatten()
 
             u_f = np.linalg.solve(K_ff_prime, contact_effect)
             print('u_f len:', np.linalg.norm(u_f))
@@ -214,15 +219,18 @@ if __name__ == "__main__":
             punyo_deformed_mesh.vertices = o3d.utility.Vector3dVector(curr_pts)
             punyo_deformed_mesh.compute_vertex_normals()
     
-    current_move_vector = np.zeros(3)
-    def create_update_move_vector(delta_vector):
+    step_idx = 0
+    def create_update_transform(delta_idx):
 
         def update_move_dist(vis):
-            global current_move_vector
-            current_move_vector += delta_vector
-            print('current_move_vector:', current_move_vector)
-            update_pts(current_move_vector)
+            global step_idx
+            if step_idx + delta_idx < 0 or step_idx + delta_idx >= total_frame:
+                return
+            else:
+                step_idx += delta_idx
 
+            print('current step:', step_idx)
+            update_pts(vsf2punyo_trans_lst[step_idx])
             vis.update_geometry(punyo_deformed_pcd)
             vis.update_geometry(punyo_deformed_mesh)
             vis.update_geometry(vsf_pcd)
@@ -231,12 +239,8 @@ if __name__ == "__main__":
         return update_move_dist
 
     key_to_callback = {}
-    key_to_callback[ord('A')] = create_update_move_vector(np.array([0.001, 0.0, 0.0]))
-    key_to_callback[ord('D')] = create_update_move_vector(np.array([-0.001, 0.0, 0.0]))
-    key_to_callback[ord('W')] = create_update_move_vector(np.array([0.0, 0.001, 0.0]))
-    key_to_callback[ord('S')] = create_update_move_vector(np.array([0.0, -0.001, 0.0]))
-    key_to_callback[ord('P')] = create_update_move_vector(np.array([0.0, 0.0, 0.001]))
-    key_to_callback[ord('L')] = create_update_move_vector(np.array([0.0, 0.0, -0.001]))
+    key_to_callback[ord('A')] = create_update_transform(+1)
+    key_to_callback[ord('S')] = create_update_transform(-1)
 
     # o3d.visualization.draw_geometries([punyo_deformed_pcd])
     o3d.visualization.draw_geometries_with_key_callbacks([punyo_deformed_pcd, punyo_deformed_mesh, vsf_pcd], key_to_callback)
