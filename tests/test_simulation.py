@@ -1,15 +1,20 @@
 import time
 import numpy as np
+import torch
 import scipy
 import matplotlib.pyplot as plt
 from pathlib import Path
 import open3d as o3d
 import imageio
-import trimesh
+import robust_laplacian
+
+import matplotlib
+matplotlib.use('TkAgg')
 
 from src.punyo_force_estimation.force_module.force_from_punyo import ForceFromPunyo
 from src.punyo_force_estimation.utils import load_frames, load_data, unpack_mesh, PC_ROTATION_MATRIX, mesh_plane_z
-from src.punyo_force_estimation.force_module.material_model import LinearPlaneStressModel, DebugPlaneStressModel, LinearSpringModel
+from src.punyo_force_estimation.force_module.material_model import LinearPlaneStressModel, DebugPlaneStressModel, LinearSpringModel, CorotatedPlaneStressModel
+from src.punyo_force_estimation.force_module.force_predictor import assemble_K_mat
 
 sx = 385.263
 sy = 385.263
@@ -49,12 +54,15 @@ if __name__ == "__main__":
     ref_dir = "src/punyo_force_estimation/ref_data"
 
     points, triangles, boundary, boundary_mask = unpack_mesh(f"{ref_dir}/equalized.vtk")
+    points, triangles, boundary, boundary_mask = unpack_mesh(f"{ref_dir}/flat.vtk")
+
     force_estimator = ForceFromPunyo(reference_rgbs, reference_pcds, reference_pressures, points, triangles, boundary, 
-                                     rest_internal_force=None, material_model=DebugPlaneStressModel(), precompile=False, verbose=True)
+                                     rest_internal_force=None, material_model=LinearSpringModel(), precompile=False, verbose=True)
     
     # force_estimator = ForceFromPunyo(reference_rgbs, reference_pcds, reference_pressures, points, triangles, boundary, 
     #                                  rest_internal_force=None, precompile=False, verbose=True)
 
+    
 
     punyo_rest = force_estimator.undeformed_points.numpy()
     punyo_pcd = o3d.geometry.PointCloud()
@@ -70,7 +78,23 @@ if __name__ == "__main__":
 
     # TODO: load K_b matrix (K_v matrix is the stiffness of VSF)
     K_B = force_estimator.force_predictor.static_K.toarray()
-    
+
+    # print('K_B shape:', K_B.shape)
+
+    # L, M = robust_laplacian.mesh_laplacian(points, triangles)
+
+    # assert np.allclose(L @ np.ones(L.shape[0]), 0), "L @ 1 != 0"
+
+    # L = L.toarray()
+    # M = M.toarray()
+
+    # plt.imshow(L)
+    # plt.show()
+
+    # K_B = L.T @ np.linalg.inv(M) @ L
+    # K_B = np.kron(K_B, np.eye(3))
+    # plt.imshow(K_B)
+    # plt.show()
     # NOTE: check the sparsity of K_B
     # for row_idx, col_idx in zip(*K_B.nonzero()):
     #     row_idx //= 3
@@ -115,26 +139,35 @@ if __name__ == "__main__":
     punyo_deformed_mesh.triangles = o3d.utility.Vector3iVector(triangles)
     punyo_deformed_mesh.compute_vertex_normals()
 
+    # o3d.io.write_triangle_mesh(f"punyo_deformed_mesh.ply", punyo_deformed_mesh)
 
-    ext_delta_pts = np.zeros_like(punyo_rest)
-    ext_delta_pts[move_idx_lst] = move_direction * 0.003
+    # ext_delta_pts = np.zeros_like(punyo_rest)
+    # ext_delta_pts[move_idx_lst] = move_direction * 0.003
 
-    boundary_pts = (punyo_rest+ext_delta_pts)[boundary_mask == 1]
+    # boundary_pts = (punyo_rest+ext_delta_pts)[boundary_mask == 1]
 
-    u_b = ext_delta_pts[boundary_mask == 1].reshape(-1)
-    start_time = time.time()
+    # u_b = ext_delta_pts[boundary_mask == 1].reshape(-1)
+    # start_time = time.time()
 
+    # u_f = np.linalg.solve(K_ff, -K_fb @ u_b)
 
-    f = -K_fb @ u_b
-    # f = LinearSpringModel().element_forces(punyo_rest, punyo_rest+ext_delta_pts, boundary_mask, K_B)
+    # f = -K_fb @ u_b - K_ff @ u_f
+    # f = np.zeros((punyo_rest.shape[0] * 3))
+    # f = f.reshape(-1, 3)
+    # for tri in triangles:
+    #     p = torch.tensor(punyo_rest[tri].reshape(-1), dtype=torch.float64)
+    #     u = torch.tensor(ext_delta_pts[tri].reshape(-1), dtype=torch.float64)
+    #     tri_f = CorotatedPlaneStressModel().element_forces(p, u, (1.0, 0.3, np.array([1.0, 0.0, 0.0], dtype=np.float64)))
+    #     f[tri] += tri_f.numpy().reshape(-1, 3)
+    # f = f.reshape(-1)
+    # f = f[~boundary_mask_flatten]
 
     # punyo_deformed_pcd.points = o3d.utility.Vector3dVector(punyo_rest + ext_delta_pts)
     # normals = np.zeros_like(punyo_rest)
     # normals[boundary_mask == 0] = f.reshape(-1, 3)
-    # punyo_deformed_pcd.normals = o3d.utility.Vector3dVector(normals * 2)
+    # punyo_deformed_pcd.normals = o3d.utility.Vector3dVector(normals * 200)
 
     # o3d.visualization.draw_geometries([punyo_deformed_pcd], point_show_normal=True)
-
 
 
     def update_pts(move_dist):
